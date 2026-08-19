@@ -1,24 +1,5 @@
-#!/usr/bin/env python3
-"""
-smart_crop.py
+"""Smart cropping of image"""
 
-Crop an image to a target size/aspect ratio, centered on the most
-"important" part of the image:
-  1. If faces are detected (via OpenCV's FaceDetectorYN / YuNet DNN model),
-     center on the bounding box of all faces.
-  2. Otherwise, fall back to saliency detection to find the most
-     visually interesting region and center on that.
-
-The face detection model (~230KB ONNX file) is downloaded automatically
-on first run and cached next to this script.
-
-Usage:
-    python smart_crop.py input.jpg output.jpg --width 800 --height 800
-    python smart_crop.py input.jpg output.jpg --aspect 4:5
-    python smart_crop.py input.jpg output.jpg --aspect 1:1 --scale 0.9
-"""
-
-import argparse
 import os
 import sys
 import urllib.request
@@ -26,9 +7,7 @@ import urllib.request
 import cv2
 import numpy as np
 
-# YuNet face detector model (ONNX). Dynamic-input-shape build, required for
-# OpenCV 5.x's ONNX Runtime DNN engine. Cached next to this script after the
-# first run so it's only downloaded once.
+# YuNet face detector model (ONNX)
 MODEL_URL = (
     "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/"
     "models/face_detection_yunet/face_detection_yunet_2026may.onnx"
@@ -36,20 +15,13 @@ MODEL_URL = (
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "face_detection_yunet.onnx")
 
 
-def ensure_model():
-    """Download the YuNet ONNX model on first use, then reuse the cached copy."""
+def ensure_model() -> str:
+    """Download the YuNet ONNX model if not already cached."""
     if os.path.exists(MODEL_PATH) and os.path.getsize(MODEL_PATH) > 0:
         return MODEL_PATH
 
-    print(f"Downloading face detection model to {MODEL_PATH} ...")
-    try:
-        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
-    except Exception as e:
-        raise RuntimeError(
-            f"Failed to download face detection model from {MODEL_URL}: {e}\n"
-            "You can also download it manually and place it at "
-            f"{MODEL_PATH}"
-        )
+    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+    urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
     return MODEL_PATH
 
 
@@ -144,12 +116,6 @@ def detect_saliency_center(img):
     cy = ys.mean() * scale_y
     return cx, cy
 
-
-def parse_aspect(aspect_str):
-    w_str, h_str = aspect_str.split(":")
-    return float(w_str), float(h_str)
-
-
 def compute_crop_box(img_w, img_h, cx, cy, target_w, target_h):
     """Compute a crop box of size (target_w, target_h) centered on (cx, cy),
     clamped so it stays fully inside the image."""
@@ -187,33 +153,14 @@ def compute_crop_box(img_w, img_h, cx, cy, target_w, target_h):
     return x1, y1, x2, y2
 
 
-def smart_crop(input_path, output_path, width=None, height=None,
-                aspect=None, scale=1.0, resize_to=None):
-    img = cv2.imread(input_path)
+def smart_crop(raw_bytes: bytes, target_size: tuple[int, int] = (800, 400)) -> bytes:
+    np_arr = np.frombuffer(raw_bytes, np.uint8)
+    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
     if img is None:
-        raise FileNotFoundError(f"Could not read image: {input_path}")
+        raise FileNotFoundError(f"Could not decode image from byte buffer")
 
     img_h, img_w = img.shape[:2]
-
-    # Determine the target crop size
-    if width and height:
-        target_w, target_h = float(width), float(height)
-    elif aspect:
-        ar_w, ar_h = parse_aspect(aspect)
-        # Use the largest crop of that aspect ratio that fits in the image
-        if img_w / img_h > ar_w / ar_h:
-            target_h = img_h
-            target_w = target_h * ar_w / ar_h
-        else:
-            target_w = img_w
-            target_h = target_w * ar_h / ar_w
-    else:
-        # Default: square crop as large as fits
-        side = min(img_w, img_h)
-        target_w = target_h = side
-
-    target_w *= scale
-    target_h *= scale
+    target_h, target_w = float(target_size[0]), float(target_size[1])
 
     try:
         face_result = detect_face_center(img)
@@ -222,56 +169,17 @@ def smart_crop(input_path, output_path, width=None, height=None,
         face_result = None
 
     if face_result is not None:
-        cx, cy, bbox = face_result
-        source = "face detection"
+        cx, cy, _ = face_result
     else:
         cx, cy = detect_saliency_center(img)
-        source = "saliency detection"
 
     x1, y1, x2, y2 = compute_crop_box(img_w, img_h, cx, cy, target_w, target_h)
     cropped = img[y1:y2, x1:x2]
 
-    if resize_to:
-        out_w, out_h = resize_to
-        cropped = cv2.resize(cropped, (out_w, out_h), interpolation=cv2.INTER_AREA)
+    resized_img = cv2.resize(cropped, target_size, interpolation=cv2.INTER_AREA)
 
-    cv2.imwrite(output_path, cropped)
-    print(f"Centered using {source} at ({cx:.0f}, {cy:.0f})")
-    print(f"Cropped region: x[{x1}:{x2}] y[{y1}:{y2}] -> saved to {output_path}")
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("input", help="Path to input image")
-    parser.add_argument("output", help="Path to save cropped output image")
-    parser.add_argument("--width", type=float, help="Target crop width in pixels")
-    parser.add_argument("--height", type=float, help="Target crop height in pixels")
-    parser.add_argument("--aspect", type=str, help="Target aspect ratio, e.g. '4:5' or '1:1'")
-    parser.add_argument("--scale", type=float, default=1.0,
-                         help="Shrink the crop box by this factor (0-1) to zoom in more tightly, default 1.0")
-    parser.add_argument("--resize-width", type=int, help="Resize final output to this width")
-    parser.add_argument("--resize-height", type=int, help="Resize final output to this height")
-
-    args = parser.parse_args()
-
-    resize_to = None
-    if args.resize_width and args.resize_height:
-        resize_to = (args.resize_width, args.resize_height)
-
-    try:
-        smart_crop(
-            args.input,
-            args.output,
-            width=args.width,
-            height=args.height,
-            aspect=args.aspect,
-            scale=args.scale,
-            resize_to=resize_to,
-        )
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+    success, buffer = cv2.imencode(".bmp", resized_img)
+    if not success:
+        raise RuntimeError("Failed to encode image as .bmp")
+    
+    return buffer.tobytes()
