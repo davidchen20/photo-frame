@@ -182,7 +182,7 @@ def smart_crop(raw_bytes: bytes, target_size: tuple[int, int] = (800, 400)) -> b
     img = decode_image_bytes(raw_bytes=raw_bytes)
 
     img_h, img_w = img.shape[:2]
-    target_h, target_w = float(target_size[0]), float(target_size[1])
+    target_w, target_h = float(target_size[0]), float(target_size[1])
 
     try:
         face_result = detect_face_center(img)
@@ -205,3 +205,36 @@ def smart_crop(raw_bytes: bytes, target_size: tuple[int, int] = (800, 400)) -> b
         raise RuntimeError("Failed to encode image as .bmp")
     
     return buffer.tobytes()
+
+if __name__ == "__main__":
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="Test smart crop on a local image.")
+    parser.add_argument("input_image", type=str, help="Path to input image (.heic, .jpg, .png, etc.)")
+    parser.add_argument("-o", "--output", type=str, default=None, help="Output path (default: ./output_<name>.bmp)")
+    parser.add_argument("-W", "--width", type=int, default=480, help="Target width (default: 480)")
+    parser.add_argument("-H", "--height", type=int, default=800, help="Target height (default: 800)")
+    args = parser.parse_args()
+
+    input_path = Path(args.input_image)
+    if not input_path.exists():
+        print(f"Error: File not found: {input_path}")
+        sys.exit(1)
+
+    if args.output:
+        out_path = Path(args.output)
+    else:
+        out_path = Path(f"output_{input_path.stem}.bmp")
+
+    print(f"Reading: {input_path}")
+    with open(input_path, "rb") as f:
+        raw_data = f.read()
+
+    print(f"Processing ({args.width}x{args.height})...")
+    output_bmp_bytes = smart_crop(raw_data, target_size=(args.width, args.height))
+
+    with open(out_path, "wb") as f:
+        f.write(output_bmp_bytes)
+
+    print(f"Output saved to: {out_path.resolve()}")

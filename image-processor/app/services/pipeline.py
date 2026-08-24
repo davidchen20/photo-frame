@@ -20,21 +20,35 @@ async def run_image_pipeline(file_path: str) -> None:
         return
     
     try:
+        print(f"Downloading: {file_path}")
         raw_bytes = supabase.storage.from_(settings.BUCKET_NAME).download(file_path)
 
+        # check if it is a dict instead of bytes
+        if isinstance(raw_bytes, dict):
+            print(f"Got an error dictionary")
+            return
+        
+        # make sure it is bytes
+        if not isinstance(raw_bytes, (bytes, bytearray)):
+            print(f"Wanted bytes but got {type(raw_bytes)}")
+            return
+        
         # process the img
         target_size = (settings.TARGET_WIDTH, settings.TARGET_HEIGHT)
         processed_bytes = await asyncio.to_thread(smart_crop, raw_bytes=raw_bytes, target_size=target_size)
 
         # save it to the processed folder as a .bmp
-        filename = os.path.basename(file_path)
-        base_name, _ = os.path.splitext(filename)
-        destination_path = f"processed/{base_name}.bmp"
+        sub_path = PurePosixPath(*path_obj.parts[1:])  # removes 'uploads'
+        destination_path = str(PurePosixPath("processed") / sub_path.with_suffix(".bmp"))
+
+        print(f"Uploading processed output: {destination_path}")
         supabase.storage.from_(settings.BUCKET_NAME).upload(
             path=destination_path,
             file=processed_bytes,
             file_options={"content-type": "image/bmp", "upsert": "true"},
         )
+        
+        print(f"Done!!!")
         
         # delete it from uploads folder since im on free tier and only have 1 gb
         supabase.storage.from_(settings.BUCKET_NAME).remove([file_path])
