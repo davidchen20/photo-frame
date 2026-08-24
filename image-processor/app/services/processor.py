@@ -181,7 +181,7 @@ def decode_image_bytes(raw_bytes: bytes) -> np.ndarray:
 def smart_crop(raw_bytes: bytes, target_size: tuple[int, int] = (800, 400)) -> bytes:
     img = decode_image_bytes(raw_bytes=raw_bytes)
 
-    img_h, img_w = img.shape[:2]
+    img_w, img_h = img.shape[:2]
     target_w, target_h = float(target_size[0]), float(target_size[1])
 
     try:
