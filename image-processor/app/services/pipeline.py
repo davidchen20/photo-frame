@@ -1,5 +1,6 @@
 import asyncio
 import os
+from pathlib import PurePosixPath
 from app.config import get_settings
 from app.core.supabase import get_supabase
 from app.services.processor import smart_crop
@@ -8,8 +9,14 @@ async def run_image_pipeline(file_path: str) -> None:
     settings = get_settings()
     supabase = get_supabase()
     
-    # don't need to process iamges in the processed folder again
-    if file_path.startswith("processed/"):
+    path_obj = PurePosixPath(file_path)
+    
+    # make sure the image is from the uploads folder
+    if not (len(path_obj.parts) > 1 and path_obj.parts[0] == "uploads"):
+        return
+    
+    # make sure it is actually an image the pipeline can process
+    if file_path.endswith("/") or path_obj.suffix.lower() not in [".bmp", ".jpg", ".jpeg", ".png", ".heic", ".heif"]:
         return
     
     try:

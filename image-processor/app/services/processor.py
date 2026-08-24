@@ -1,11 +1,16 @@
 """Smart cropping of image"""
 
+import io
 import os
 import sys
 import urllib.request
 
 import cv2
 import numpy as np
+import pillow_heif
+from PIL import Image, ImageOps
+
+pillow_heif.register_heif_opener()
 
 # YuNet face detector model (ONNX)
 MODEL_URL = (
@@ -152,12 +157,29 @@ def compute_crop_box(img_w, img_h, cx, cy, target_w, target_h):
 
     return x1, y1, x2, y2
 
-
-def smart_crop(raw_bytes: bytes, target_size: tuple[int, int] = (800, 400)) -> bytes:
+def decode_image_bytes(raw_bytes: bytes) -> np.ndarray:
+    # try using opencv first
     np_arr = np.frombuffer(raw_bytes, np.uint8)
     img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    if img is None:
-        raise FileNotFoundError(f"Could not decode image from byte buffer")
+    if img is not None:
+        return img
+    
+    # try pillow heif (in the case we have .heic since maybe from iPhone)
+    try:
+        pil_img = Image.open(io.BytesIO(raw_bytes))
+        
+        # fix metadata stuff
+        pil_img = ImageOps.exif_transpose(pil_img)
+        pil_img = pil_img.convert("RGB")
+        
+        # turn into opencv bgr
+        rgb_arr = np.array(pil_img)
+        return cv2.cvtColor(rgb_arr, cv2.COLOR_RGB2BGR)
+    except Exception as e:
+        raise ValueError(f"Failed to decode image bytes: {e}")
+
+def smart_crop(raw_bytes: bytes, target_size: tuple[int, int] = (800, 400)) -> bytes:
+    img = decode_image_bytes(raw_bytes=raw_bytes)
 
     img_h, img_w = img.shape[:2]
     target_h, target_w = float(target_size[0]), float(target_size[1])
