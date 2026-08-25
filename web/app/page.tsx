@@ -27,7 +27,7 @@ export default function Home() {
     setStatus('Verifying password...');
 
     // 1. Ask server for permission & signed URL
-    const urlResult = await getSignedUploadUrlAction(password, file.name);
+    const urlResult = await getSignedUploadUrlAction(password, file.name, file.type);
 
     if (!urlResult.success || !urlResult.path || !urlResult.token) {
       setUploading(false);
@@ -40,7 +40,7 @@ export default function Home() {
     // 2. Upload directly from browser to Supabase
     const { error: uploadError } = await supabase.storage
       .from('photos')
-      .uploadToSignedUrl(urlResult.path, urlResult.token, file);
+      .uploadToSignedUrl(urlResult.path, urlResult.token, file, {contentType: urlResult.contentType || file.type || 'image/jpeg'});
 
     setUploading(false);
 
@@ -57,14 +57,14 @@ export default function Home() {
       <div className="w-full max-w-md bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-xl">
         <h1 className="text-2xl font-bold text-center mb-1">Photo Frame Uploader</h1>
         <p className="text-slate-400 text-sm text-center mb-6">
-          Upload 24-bit .BMP images to your cloud frame
+          Upload image to Supabase bucket
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="file"
             name="file"
-            accept=".bmp"
+            accept=".jpg,.jpeg,.png,.bmp,.heic,.heif,image/jpeg,image/png,image/bmp,image/heic,image/heif"
             required
             className="w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer"
           />
