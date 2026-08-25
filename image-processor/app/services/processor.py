@@ -1,5 +1,6 @@
 """Smart cropping of image"""
 
+import gc
 import io
 import os
 import sys
@@ -186,33 +187,62 @@ def decode_image_bytes(raw_bytes: bytes) -> np.ndarray:
         raise ValueError(f"Failed to decode image bytes: {e}")
 
 def smart_crop(raw_bytes: bytes, target_size: tuple[int, int] = (800, 400)) -> bytes:
-    img = decode_image_bytes(raw_bytes=raw_bytes)
-
-    img_w, img_h = img.shape[:2]
     target_w, target_h = float(target_size[0]), float(target_size[1])
+    
+    try:
+        pil_img = Image.open(io.BytesIO(raw_bytes))
+        pil_img = ImageOps.exif_transpose(pil_img)
+        pil_img = pil_img.convert("RGB")
+    except Exception as e:
+        raise ValueError(f"Failed to decode image bytes: {e}")
+    
+    full_w, full_h = pil_img.size
+    
+    # create a downscaled version to find center
+    proxy_img = pil_img.copy()
+    proxy_img.thumbnail((800, 800), Image.Resampling.BILINEAR)
+    proxy_w, proxy_h = proxy_img.size
+
+    proxy_cv = cv2.cvtColor(np.array(proxy_img), cv2.COLOR_RGB2BGR)
 
     try:
-        face_result = detect_face_center(img)
+        face_result = detect_face_center(proxy_cv)
     except Exception as e:
         print(f"Warning: face detection unavailable ({e}); falling back to saliency.", file=sys.stderr)
         face_result = None
 
     if face_result is not None:
-        cx, cy, _ = face_result
+        cx_proxy, cy_proxy, _ = face_result
     else:
-        cx, cy = detect_saliency_center(img)
-
-    x1, y1, x2, y2 = compute_crop_box(img_w, img_h, cx, cy, target_w, target_h)
-    cropped = img[y1:y2, x1:x2]
-
-    resized_img = cv2.resize(cropped, target_size, interpolation=cv2.INTER_AREA)
-
-    success, buffer = cv2.imencode(".bmp", resized_img)
-    if not success:
-        raise RuntimeError("Failed to encode image as .bmp")
+        cx_proxy, cy_proxy = detect_saliency_center(proxy_cv)
+        
+    # delete proxies to free memory
+    del proxy_cv
+    del proxy_img
     
-    return buffer.tobytes()
+    # get coordinates in orig image
+    scale_x = full_w / proxy_w
+    scale_y = full_h / proxy_h
+    cx_full = cx_proxy * scale_x
+    cy_full = cy_proxy * scale_y
 
+    x1, y1, x2, y2 = compute_crop_box(full_w, full_h, cx_full, cy_full, target_w, target_h)
+    cropped = pil_img.crop((x1, y1, x2, y2))
+    resized = cropped.resize((int(target_w), int(target_h)), Image.Resampling.LANCZOS)
+
+    # turn into a bmp buffer
+    output_buffer = io.BytesIO()
+    resized.save(output_buffer, format="BMP")
+    bmp_bytes = output_buffer.getvalue()
+
+    # Clean up PIL allocations
+    output_buffer.close()
+    pil_img.close()
+    cropped.close()
+    resized.close()
+    gc.collect()
+
+    return bmp_bytes
 if __name__ == "__main__":
     import argparse
     from pathlib import Path
