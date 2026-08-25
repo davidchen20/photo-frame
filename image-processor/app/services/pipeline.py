@@ -47,6 +47,10 @@ async def run_image_pipeline(file_path: str) -> None:
             file=processed_bytes,
             file_options={"content-type": "image/bmp", "upsert": "true"},
         )
+
+        supabase.table("images").insert({
+            "storage_path": destination_path
+        }).execute()
         
         print(f"Done!!!")
         
