@@ -19,15 +19,30 @@ MODEL_URL = (
 )
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "face_detection_yunet.onnx")
 
+_DETECTOR = None
 
-def ensure_model() -> str:
+def get_face_detector() -> str:
     """Download the YuNet ONNX model if not already cached."""
-    if os.path.exists(MODEL_PATH) and os.path.getsize(MODEL_PATH) > 0:
-        return MODEL_PATH
+    global _DETECTOR
+    if _DETECTOR is not None:
+        return _DETECTOR
+    
+    if not (os.path.exists(MODEL_PATH) and os.path.getsize(MODEL_PATH) > 0):
+        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+        print("Downloading YuNet ONNX model...", file=sys.stderr)
+        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
 
-    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-    urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
-    return MODEL_PATH
+    _DETECTOR = cv2.FaceDetectorYN.create(
+        model=MODEL_PATH,
+        config="",
+        input_size=(480, 800),
+        score_threshold=0.9,
+        nms_threshold=0.3,
+        top_k=5000,
+        backend_id=cv2.dnn.DNN_BACKEND_OPENCV,
+        target_id=cv2.dnn.DNN_TARGET_CPU,
+    )
+    return _DETECTOR
 
 
 def detect_face_center(img):
@@ -36,17 +51,9 @@ def detect_face_center(img):
     Uses OpenCV's FaceDetectorYN (a small ONNX/DNN model), which replaced
     CascadeClassifier-based Haar detection in OpenCV 5.x.
     """
-    model_path = ensure_model()
+    detector = get_face_detector()
     img_h, img_w = img.shape[:2]
 
-    detector = cv2.FaceDetectorYN.create(
-        model_path,
-        "",                # config path, unused for ONNX
-        (img_w, img_h),    # input size
-        0.9,               # score threshold
-        0.3,               # NMS threshold
-        5000,              # top_k
-    )
     detector.setInputSize((img_w, img_h))
 
     _, faces = detector.detect(img)

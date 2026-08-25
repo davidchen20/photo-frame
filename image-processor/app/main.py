@@ -4,7 +4,7 @@ from fastapi import FastAPI, BackgroundTasks, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
-from app.services.processor import ensure_model
+from app.services.processor import get_face_detector
 from app.services.pipeline import run_image_pipeline
 
 settings = get_settings()
@@ -12,7 +12,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # make sure model is downloaded
-    ensure_model()
+    get_face_detector()
     yield
     
 app = FastAPI(
