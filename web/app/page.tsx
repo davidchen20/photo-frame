@@ -4,6 +4,25 @@ import { useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { getSignedUploadUrlAction } from './actions';
 
+// helper method to infer the mime type
+const getMimeType = (file: File): string => {
+  if (file.type && file.type !== 'application/octet-stream') {
+    return file.type;
+  }
+
+  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+  const mimeMap: Record<string, string> = {
+    '.heic': 'image/heic',
+    '.heif': 'image/heif',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.bmp': 'image/bmp',
+  };
+
+  return mimeMap[ext] || 'application/octet-stream';
+};
+
 export default function Home() {
   const [uploading, setUploading] = useState<boolean>(false);
   const [status, setStatus] = useState<string>('');
@@ -26,8 +45,10 @@ export default function Home() {
     setUploading(true);
     setStatus('Verifying password...');
 
+    const fileType = getMimeType(file);
+
     // 1. Ask server for permission & signed URL
-    const urlResult = await getSignedUploadUrlAction(password, file.name, file.type);
+    const urlResult = await getSignedUploadUrlAction(password, file.name, fileType);
 
     if (!urlResult.success || !urlResult.path || !urlResult.token) {
       setUploading(false);
@@ -40,7 +61,7 @@ export default function Home() {
     // 2. Upload directly from browser to Supabase
     const { error: uploadError } = await supabase.storage
       .from('photos')
-      .uploadToSignedUrl(urlResult.path, urlResult.token, file, {contentType: urlResult.contentType || file.type || 'image/jpeg'});
+      .uploadToSignedUrl(urlResult.path, urlResult.token, file, {contentType: fileType });
 
     setUploading(false);
 
