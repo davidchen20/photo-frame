@@ -21,6 +21,27 @@ const EXTENSION_TO_MIME: Record<string, string> = {
   '.heif': 'image/heif',
 };
 
+async function pingHeartbeat(timeoutMs = 5000): Promise<boolean> {
+  const controller = new AbortController();
+
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch('https://photo-frame-image-processor.onrender.com', {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.log("heartbeat failed or timed out: ", error);
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function getSignedUploadUrlAction(password: string, filename: string, contentType: string) {
   try {
     // Verify password server-side
@@ -46,6 +67,16 @@ export async function getSignedUploadUrlAction(password: string, filename: strin
     const effectiveMime = contentType || expectedMime;
     if (!ALLOWED_MIME_TYPES.has(effectiveMime.toLowerCase())) {
       return { success: false, error: `Unsupported file type: ${contentType}` };
+    }
+
+    // make sure render microservice is alive before uploading so that the photo is actually processed
+    const microserviceAlive = await pingHeartbeat(90000);
+
+    if (!microserviceAlive) {
+      return { 
+        success: false,
+        error: 'microservice not alive'
+      };
     }
 
     // Sanitize file name
