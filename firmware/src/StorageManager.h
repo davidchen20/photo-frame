@@ -51,6 +51,7 @@ public:
   // Local stuff
   size_t getPhotoCount() const;
   bool streamPhoto(size_t index, std::function<void(Stream*)> onDataReady);
+  bool cleanCache();
 };
 
 #endif

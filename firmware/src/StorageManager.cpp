@@ -255,16 +255,17 @@ bool StorageManager::downloadCloudImage(const String& id, const String& signedUr
 
   Serial.printf("[Cloud] Image size: %d bytes\n", contentLength);
 
-  String path = "/" + id + ".bmp";
+  String tempPath = "/" + id + ".tmp";
+  String finalPath = "/" + id + ".bmp";
   File file = SD.open(
-      path.c_str(),
+      tempPath.c_str(),
       FILE_WRITE
   );
 
   if (!file) {
     Serial.printf(
         "[SD] Failed to create %s\n",
-        path.c_str()
+        tempPath.c_str()
     );
 
     http->end();
@@ -274,45 +275,57 @@ bool StorageManager::downloadCloudImage(const String& id, const String& signedUr
   WiFiClient* stream = http->getStreamPtr();
 
   uint8_t buffer[4096];
-
   size_t totalWritten = 0;
 
-  while (http->connected() && (contentLength > 0 || contentLength == -1)) {
-    size_t available = stream->available();
+  while (totalWritten < contentLength) {
+    size_t remaining = contentLength - totalWritten;
+    size_t bytesToRead = min(remaining, sizeof(buffer));
 
-    if (available) {
-      size_t bytesToRead =
-          min(available, sizeof(buffer));
+    int bytesRead = stream->readBytes(buffer, bytesToRead);
 
-      int bytesRead = stream->readBytes(buffer, bytesToRead);
-
-      if (bytesRead > 0) {
-        file.write(buffer, bytesRead);
-
-        totalWritten += bytesRead;
-
-        if (contentLength > 0) {
-            contentLength -= bytesRead;
-        }
-      }
+    if (bytesRead <= 0) {
+      Serial.println("[Cloud] Download interrupted.");
+      file.close();
+      http->end();
+      SD.remove(tempPath.c_str());
+      return false;
     }
 
-    delay(1);
+    size_t written = file.write(buffer, bytesRead);
+
+    if (written != bytesRead) {
+      Serial.println("[SD] Failed to write entire buffer.");
+      file.close();
+      http->end();
+      SD.remove(tempPath.c_str());
+      return false;
+    }
+
+    totalWritten += written;
   }
 
   file.close();
+
+  file.close();
+
+  if (!SD.rename(tempPath.c_str(), finalPath.c_str())) {
+    Serial.println("[SD] Failed to rename temp file.");
+    SD.remove(tempPath.c_str());
+    return false;
+  }
+
   http->end();
 
-  Serial.printf("[Cloud] Downloaded %u bytes\n", (unsigned)totalWritten);
+  Serial.printf(
+      "[Cloud] Downloaded %u / %u bytes\n",
+      (unsigned)totalWritten,
+      (unsigned)contentLength
+  );
 
-  // TODO: validate download before adding to cache.
-
-  if (totalWritten == 0) {
-    Serial.println("[Cloud] Download produced no data.");
-
-    SD.remove(path.c_str());
-
-    return false;
+  if (totalWritten != contentLength) {
+      Serial.println("[Cloud] ERROR: File size mismatch.");
+      SD.remove(tempPath.c_str());
+      return false;
   }
 
   localPhotos.push_back(id);
@@ -357,4 +370,42 @@ void StorageManager::update() {
       lastCloudSync = millis();
     }
   }
+}
+
+// Get rid of any .tmp files (happens when image disconnects from WiFi while downloading)
+bool StorageManager::cleanCache() {
+  File root = SD.open("/");
+
+  if (!root || !root.isDirectory()) {
+    Serial.println("[SD] Failed to open root directory.");
+    return false;
+  }
+
+  File file = root.openNextFile();
+
+  while (file) {
+    String path = String("/") + file.name();
+    bool isFile = !file.isDirectory();
+
+    file.close();
+
+    if (isFile && path.endsWith(".tmp")) {
+      Serial.printf("[SD] Deleting %s\n", path.c_str());
+      SD.remove(path.c_str());
+    }
+
+    if (isFile && path.endsWith(".bmp")) {
+      Serial.printf("[SD] Deleting %s\n", path.c_str());
+      SD.remove(path.c_str());
+    }
+
+    file = root.openNextFile();
+  }
+
+  root.close();
+
+  localPhotos.clear();
+
+  Serial.println("[SD] Cache cleared.");
+  return true;
 }

@@ -12,6 +12,8 @@ bool PhotoFrame::begin(const char* ssid, const char* password) {
     return false;
   }
 
+  storage.cleanCache();
+
   display.showMessage("SD card ready", TFT_GREEN);
   
   delay(1000);

@@ -12,13 +12,15 @@
 // Instance Instantiation
 DisplayManager displayManager(TFT_BL);
 StorageManager storageManager(SUPABASE_EDGE_FUNCTION, SD_CS);
-PhotoFrame photoFrame(displayManager, storageManager, 20000 /* ms */, false /* shuffle */);
+PhotoFrame photoFrame(displayManager, storageManager, 5000 /* ms */, false /* shuffle */);
 
 void frameWorkerTask(void *pvParameters) {
   // Initialize frame inside the dedicated task frame context
   if (!photoFrame.begin(WIFI_SSID, WIFI_PASS)) {
     Serial.println("PhotoFrame initialization failed!");
   }
+
+  // storageManager.clearCache();
 
   // Infinite processing loop
   while (true) {
