@@ -160,7 +160,8 @@ bool StorageManager::syncWithCloud() {
   Serial.printf("[Memory] Largest block: %u\n", ESP.getMaxAllocHeap());
 
   // change later
-  client->setInsecure();
+  // client->setInsecure();
+  client->setCACert(SUPABASE_ROOT_CA);
 
   if (!http->begin(*client, apiUrl)) {
     Serial.println("[Cloud] Failed to initialize HTTP connection.");
@@ -234,7 +235,8 @@ bool StorageManager::downloadCloudImage(const String& id, const String& signedUr
   auto http = std::make_unique<HTTPClient>();
 
   // temp
-  client->setInsecure();
+  // client->setInsecure();
+  client->setCACert(SUPABASE_ROOT_CA);
 
   if (!http->begin(*client, signedUrl)) {
     Serial.println("[Cloud] Failed to open signed URL.");
@@ -274,25 +276,41 @@ bool StorageManager::downloadCloudImage(const String& id, const String& signedUr
 
   WiFiClient* stream = http->getStreamPtr();
 
-  uint8_t buffer[4096];
+  uint8_t buffer[1024];
   size_t totalWritten = 0;
 
+  int timeoutCount = 0;
+
   while (totalWritten < contentLength) {
+
     size_t remaining = contentLength - totalWritten;
     size_t bytesToRead = min(remaining, sizeof(buffer));
 
     int bytesRead = stream->readBytes(buffer, bytesToRead);
 
-    if (bytesRead <= 0) {
-      Serial.println("[Cloud] Download interrupted.");
-      file.close();
-      http->end();
-      SD.remove(tempPath.c_str());
-      return false;
+    if (bytesRead == 0) {
+      timeoutCount++;
+      Serial.printf(
+        "[Cloud] Read timeout #%d at %u / %u bytes\n",
+        timeoutCount,
+        (unsigned)totalWritten,
+        (unsigned)contentLength
+      );
+
+      if (timeoutCount >= 10) {
+        Serial.println("[Cloud] Too many read timeouts.");
+        file.close();
+        http->end();
+        SD.remove(tempPath.c_str());
+        return false;
+      }
+
+      continue;
     }
 
-    size_t written = file.write(buffer, bytesRead);
+    timeoutCount = 0;
 
+    size_t written = file.write(buffer, bytesRead);
     if (written != bytesRead) {
       Serial.println("[SD] Failed to write entire buffer.");
       file.close();
@@ -303,8 +321,6 @@ bool StorageManager::downloadCloudImage(const String& id, const String& signedUr
 
     totalWritten += written;
   }
-
-  file.close();
 
   file.close();
 
