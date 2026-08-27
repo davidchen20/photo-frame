@@ -1,0 +1,277 @@
+"""Smart cropping of image"""
+
+import gc
+import io
+import os
+import sys
+import urllib.request
+
+import cv2
+import numpy as np
+import pillow_heif
+from PIL import Image, ImageOps
+
+pillow_heif.register_heif_opener()
+
+# YuNet face detector model (ONNX)
+MODEL_URL = (
+    "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/"
+    "models/face_detection_yunet/face_detection_yunet_2026may.onnx"
+)
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "face_detection_yunet.onnx")
+
+_DETECTOR = None
+
+def get_face_detector() -> str:
+    """Download the YuNet ONNX model if not already cached."""
+    global _DETECTOR
+    if _DETECTOR is not None:
+        return _DETECTOR
+    
+    if not (os.path.exists(MODEL_PATH) and os.path.getsize(MODEL_PATH) > 0):
+        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+        print("Downloading YuNet ONNX model...", file=sys.stderr)
+        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+
+    _DETECTOR = cv2.FaceDetectorYN.create(
+        model=MODEL_PATH,
+        config="",
+        input_size=(480, 800),
+        score_threshold=0.9,
+        nms_threshold=0.3,
+        top_k=5000,
+        backend_id=cv2.dnn.DNN_BACKEND_OPENCV,
+        target_id=cv2.dnn.DNN_TARGET_CPU,
+    )
+    return _DETECTOR
+
+
+def detect_face_center(img):
+    """Return (cx, cy, bbox) of the union of all detected faces, or None.
+
+    Uses OpenCV's FaceDetectorYN (a small ONNX/DNN model), which replaced
+    CascadeClassifier-based Haar detection in OpenCV 5.x.
+    """
+    detector = get_face_detector()
+    img_h, img_w = img.shape[:2]
+
+    detector.setInputSize((img_w, img_h))
+
+    _, faces = detector.detect(img)
+
+    if faces is None or len(faces) == 0:
+        return None
+
+    # Each row: [x, y, w, h, <5 landmark x,y pairs>, score]
+    xs = faces[:, 0]
+    ys = faces[:, 1]
+    xe = faces[:, 0] + faces[:, 2]
+    ye = faces[:, 1] + faces[:, 3]
+
+    x_min, y_min = xs.min(), ys.min()
+    x_max, y_max = xe.max(), ye.max()
+
+    cx = (x_min + x_max) / 2
+    cy = (y_min + y_max) / 2
+    return cx, cy, (x_min, y_min, x_max, y_max)
+
+
+def detect_saliency_center(img):
+    """Return (cx, cy) of the most salient region.
+
+    Implements the spectral residual saliency algorithm (Hou & Zhang, 2007)
+    directly with FFT/numpy, rather than relying on cv2.saliency. That
+    module lives in opencv_contrib and is not present in every OpenCV
+    build (notably, it was dropped from OpenCV 5.0's default build), so
+    this avoids depending on it.
+    """
+    h, w = img.shape[:2]
+
+    # Work on a small grayscale version for speed; the algorithm is scale
+    # invariant enough that this doesn't hurt accuracy.
+    small_w, small_h = 128, int(128 * h / w) if w else 128
+    small_h = max(1, small_h)
+    small = cv2.resize(img, (small_w, small_h), interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32)
+
+    dft = cv2.dft(gray, flags=cv2.DFT_COMPLEX_OUTPUT)
+    magnitude, phase = cv2.cartToPolar(dft[:, :, 0], dft[:, :, 1])
+
+    log_magnitude = np.log(magnitude + 1e-9)
+    # Local average of the log spectrum, approximating the "smooth" baseline
+    avg_log_magnitude = cv2.blur(log_magnitude, (3, 3))
+    spectral_residual = log_magnitude - avg_log_magnitude
+
+    real = np.exp(spectral_residual) * np.cos(phase)
+    imag = np.exp(spectral_residual) * np.sin(phase)
+    combined = cv2.merge([real, imag])
+
+    saliency_map = cv2.idft(combined, flags=cv2.DFT_SCALE)
+    saliency_map = cv2.magnitude(saliency_map[:, :, 0], saliency_map[:, :, 1])
+    saliency_map = saliency_map ** 2
+    saliency_map = cv2.GaussianBlur(saliency_map, (7, 7), sigmaX=3)
+
+    cv2.normalize(saliency_map, saliency_map, 0, 255, cv2.NORM_MINMAX)
+    saliency_map = saliency_map.astype("uint8")
+
+    # Threshold to keep only the most salient pixels, then find their centroid
+    thresh_val = np.percentile(saliency_map, 90)
+    _, thresh = cv2.threshold(saliency_map, thresh_val, 255, cv2.THRESH_BINARY)
+
+    ys, xs = np.nonzero(thresh)
+    if len(xs) == 0:
+        return w / 2, h / 2
+
+    # Map centroid from the small working image back to full resolution
+    scale_x = w / small_w
+    scale_y = h / small_h
+    cx = xs.mean() * scale_x
+    cy = ys.mean() * scale_y
+    return cx, cy
+
+def compute_crop_box(img_w, img_h, cx, cy, target_w, target_h):
+    """Compute a crop box of size (target_w, target_h) centered on (cx, cy),
+    clamped so it stays fully inside the image."""
+
+    # If the requested crop is bigger than the image in either dimension,
+    # scale it down to fit while preserving aspect ratio.
+    scale = min(img_w / target_w, img_h / target_h, 1.0)
+    crop_w = target_w * scale
+    crop_h = target_h * scale
+
+    x1 = cx - crop_w / 2
+    y1 = cy - crop_h / 2
+    x2 = x1 + crop_w
+    y2 = y1 + crop_h
+
+    # Shift box back inside image bounds if it overflows
+    if x1 < 0:
+        x2 -= x1
+        x1 = 0
+    if y1 < 0:
+        y2 -= y1
+        y1 = 0
+    if x2 > img_w:
+        x1 -= (x2 - img_w)
+        x2 = img_w
+    if y2 > img_h:
+        y1 -= (y2 - img_h)
+        y2 = img_h
+
+    x1 = max(0, int(round(x1)))
+    y1 = max(0, int(round(y1)))
+    x2 = min(img_w, int(round(x2)))
+    y2 = min(img_h, int(round(y2)))
+
+    return x1, y1, x2, y2
+
+def decode_image_bytes(raw_bytes: bytes) -> np.ndarray:
+    # try using opencv first
+    np_arr = np.frombuffer(raw_bytes, np.uint8)
+    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    if img is not None:
+        return img
+    
+    # try pillow heif (in the case we have .heic since maybe from iPhone)
+    try:
+        pil_img = Image.open(io.BytesIO(raw_bytes))
+        
+        # fix metadata stuff
+        pil_img = ImageOps.exif_transpose(pil_img)
+        pil_img = pil_img.convert("RGB")
+        
+        # turn into opencv bgr
+        rgb_arr = np.array(pil_img)
+        return cv2.cvtColor(rgb_arr, cv2.COLOR_RGB2BGR)
+    except Exception as e:
+        raise ValueError(f"Failed to decode image bytes: {e}")
+
+def smart_crop(raw_bytes: bytes, target_size: tuple[int, int] = (800, 400)) -> bytes:
+    target_w, target_h = float(target_size[0]), float(target_size[1])
+    
+    try:
+        pil_img = Image.open(io.BytesIO(raw_bytes))
+        pil_img = ImageOps.exif_transpose(pil_img)
+        pil_img = pil_img.convert("RGB")
+    except Exception as e:
+        raise ValueError(f"Failed to decode image bytes: {e}")
+    
+    full_w, full_h = pil_img.size
+    
+    # create a downscaled version to find center
+    proxy_img = pil_img.copy()
+    proxy_img.thumbnail((800, 800), Image.Resampling.BILINEAR)
+    proxy_w, proxy_h = proxy_img.size
+
+    proxy_cv = cv2.cvtColor(np.array(proxy_img), cv2.COLOR_RGB2BGR)
+
+    try:
+        face_result = detect_face_center(proxy_cv)
+    except Exception as e:
+        print(f"Warning: face detection unavailable ({e}); falling back to saliency.", file=sys.stderr)
+        face_result = None
+
+    if face_result is not None:
+        cx_proxy, cy_proxy, _ = face_result
+    else:
+        cx_proxy, cy_proxy = detect_saliency_center(proxy_cv)
+        
+    # delete proxies to free memory
+    del proxy_cv
+    del proxy_img
+    
+    # get coordinates in orig image
+    scale_x = full_w / proxy_w
+    scale_y = full_h / proxy_h
+    cx_full = cx_proxy * scale_x
+    cy_full = cy_proxy * scale_y
+
+    x1, y1, x2, y2 = compute_crop_box(full_w, full_h, cx_full, cy_full, target_w, target_h)
+    cropped = pil_img.crop((x1, y1, x2, y2))
+    resized = cropped.resize((int(target_w), int(target_h)), Image.Resampling.LANCZOS)
+
+    # turn into a bmp buffer
+    output_buffer = io.BytesIO()
+    resized.save(output_buffer, format="BMP")
+    bmp_bytes = output_buffer.getvalue()
+
+    # Clean up PIL allocations
+    output_buffer.close()
+    pil_img.close()
+    cropped.close()
+    resized.close()
+    gc.collect()
+
+    return bmp_bytes
+if __name__ == "__main__":
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="Test smart crop on a local image.")
+    parser.add_argument("input_image", type=str, help="Path to input image (.heic, .jpg, .png, etc.)")
+    parser.add_argument("-o", "--output", type=str, default=None, help="Output path (default: ./output_<name>.bmp)")
+    parser.add_argument("-W", "--width", type=int, default=480, help="Target width (default: 480)")
+    parser.add_argument("-H", "--height", type=int, default=800, help="Target height (default: 800)")
+    args = parser.parse_args()
+
+    input_path = Path(args.input_image)
+    if not input_path.exists():
+        print(f"Error: File not found: {input_path}")
+        sys.exit(1)
+
+    if args.output:
+        out_path = Path(args.output)
+    else:
+        out_path = Path(f"output_{input_path.stem}.bmp")
+
+    print(f"Reading: {input_path}")
+    with open(input_path, "rb") as f:
+        raw_data = f.read()
+
+    print(f"Processing ({args.width}x{args.height})...")
+    output_bmp_bytes = smart_crop(raw_data, target_size=(args.width, args.height))
+
+    with open(out_path, "wb") as f:
+        f.write(output_bmp_bytes)
+
+    print(f"Output saved to: {out_path.resolve()}")
