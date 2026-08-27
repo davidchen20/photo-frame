@@ -1,0 +1,54 @@
+#include <Arduino.h>
+#include "env.h"
+
+#include "DisplayManager.h"
+#include "StorageManager.h"
+#include "PhotoFrame.h"
+
+// Hardware Pin Definitions
+#define TFT_BL 2
+#define SD_CS  10
+
+// Instance Instantiation
+DisplayManager displayManager(TFT_BL);
+StorageManager storageManager(SUPABASE_EDGE_FUNCTION, SD_CS);
+PhotoFrame photoFrame(displayManager, storageManager, 5000 /* ms */, false /* shuffle */);
+
+void frameWorkerTask(void *pvParameters) {
+  // Initialize frame inside the dedicated task frame context
+  if (!photoFrame.begin(WIFI_SSID, WIFI_PASS)) {
+    Serial.println("PhotoFrame initialization failed!");
+  }
+
+  // storageManager.clearCache();
+
+  // Infinite processing loop
+  while (true) {
+    storageManager.update();
+    photoFrame.update();
+    vTaskDelay(pdMS_TO_TICKS(10)); // Yield 10ms to feed the Task Watchdog
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  
+  unsigned long start = millis();
+  while (!Serial && (millis() - start < 3000)) delay(10);
+
+  // make an RTOS task with a bigger stack
+  xTaskCreatePinnedToCore(
+    frameWorkerTask,   // Task function
+    "FrameTask",       // Task name
+    32768,             // Stack size in bytes (32 KB - 4x loopTask default!)
+    NULL,              // Task parameters
+    1,                 // Priority
+    NULL,              // Task handle
+    1                  // Run on App CPU (Core 1)
+  );
+}
+
+void loop() {
+  // apparently this is best practice
+  vTaskDelay(pdMS_TO_TICKS(1000));
+}
