@@ -12,11 +12,7 @@ bool PhotoFrame::begin(const char* ssid, const char* password) {
     return false;
   }
 
-  if (storage.getMode() == StorageMode::CLOUD) {
-    display.showMessage("Mode: Cloud Active", TFT_GREEN);
-  } else {
-    display.showMessage("Mode: Offline SD Card", TFT_YELLOW);
-  }
+  display.showMessage("SD card ready", TFT_GREEN);
   
   delay(1000);
   nextImage(); // Display first frame
@@ -27,7 +23,6 @@ void PhotoFrame::update() {
   if (storage.getPhotoCount() == 0) return;
 
   if (millis() - lastChangeTime >= intervalMs) {
-    storage.refreshPhotos(); // Refresh links/files if needed
     nextImage();
   }
 }

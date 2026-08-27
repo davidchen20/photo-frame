@@ -4,6 +4,9 @@
 #include "DisplayManager.h"
 #include "StorageManager.h"
 
+/*
+  Controls behavior or photoframe (when to change photos, which photo to show, ect...)
+*/
 class PhotoFrame {
 private:
   DisplayManager &display;

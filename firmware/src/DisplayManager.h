@@ -15,6 +15,9 @@ public:
     CustomLGFX();
 };
 
+/*
+    Controls the screen
+*/
 class DisplayManager {
 private:
     CustomLGFX lcd;
@@ -28,10 +31,8 @@ public:
     void clear(uint32_t color = TFT_BLACK);
     void showMessage(const char* text, uint16_t color = TFT_WHITE);
     
-    // Legacy file-path method (kept for local SD compatibility)
     bool renderCenteredBMP(fs::FS &fs, const char *filename);
     
-    // NEW: Generic stream renderer for Cloud socket or SD File stream
     bool drawBmpStream(Stream* stream) {
         return lcd.drawBmp(stream, 0, 0);
     }

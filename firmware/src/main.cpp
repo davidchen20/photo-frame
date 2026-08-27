@@ -10,19 +10,20 @@
 #define SD_CS  10
 
 // Instance Instantiation
-DisplayManager display(TFT_BL);
-StorageManager storage(VERCEL_API, SD_CS);
-PhotoFrame frame(display, storage, 10000 /* ms */, false /* shuffle */);
+DisplayManager displayManager(TFT_BL);
+StorageManager storageManager(SUPABASE_EDGE_FUNCTION, SD_CS);
+PhotoFrame photoFrame(displayManager, storageManager, 20000 /* ms */, false /* shuffle */);
 
 void frameWorkerTask(void *pvParameters) {
   // Initialize frame inside the dedicated task frame context
-  if (!frame.begin(WIFI_SSID, WIFI_PASS)) {
+  if (!photoFrame.begin(WIFI_SSID, WIFI_PASS)) {
     Serial.println("PhotoFrame initialization failed!");
   }
 
   // Infinite processing loop
   while (true) {
-    frame.update();
+    storageManager.update();
+    photoFrame.update();
     vTaskDelay(pdMS_TO_TICKS(10)); // Yield 10ms to feed the Task Watchdog
   }
 }
