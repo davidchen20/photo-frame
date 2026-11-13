@@ -108,3 +108,7 @@ export async function getSignedUploadUrlAction(password: string, filename: strin
     return { success: false, error: err?.message || 'An unexpected error occurred.' };
   }
 }
+
+// export async function deleteImage(filename: string) {
+//   // 
+// }

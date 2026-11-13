@@ -410,17 +410,17 @@ bool StorageManager::cleanCache() {
       SD.remove(path.c_str());
     }
 
-    if (isFile && path.endsWith(".bmp")) {
-      Serial.printf("[SD] Deleting %s\n", path.c_str());
-      SD.remove(path.c_str());
-    }
+    // if (isFile && path.endsWith(".bmp")) {
+    //   Serial.printf("[SD] Deleting %s\n", path.c_str());
+    //   SD.remove(path.c_str());
+    // }
 
     file = root.openNextFile();
   }
 
   root.close();
 
-  localPhotos.clear();
+  // localPhotos.clear();
 
   Serial.println("[SD] Cache cleared.");
   return true;
