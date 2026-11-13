@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { getSignedUploadUrlAction } from './actions';
+import PhotoLibrary from './PhotoLibrary';
 
 const FRAME_WIDTH = 480;
 const FRAME_HEIGHT = 800;
@@ -18,6 +19,7 @@ function getMimeType(file: File): string {
 }
 
 export default function Home() {
+  const [activeTab, setActiveTab] = useState<'upload' | 'library'>('upload');
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
@@ -71,6 +73,7 @@ export default function Home() {
       return;
     }
 
+    const password = new FormData(form).get('password') as string;
     setUploading(true);
     try {
       let uploadFile = file;
@@ -88,7 +91,6 @@ export default function Home() {
       }
 
       setStatus('Verifying password and starting the image processor...');
-      const password = new FormData(form).get('password') as string;
       const fileType = getMimeType(uploadFile);
       const urlResult = await getSignedUploadUrlAction(password, uploadFile.name, fileType);
       if (!urlResult.success || !urlResult.path || !urlResult.token) {
@@ -114,18 +116,27 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-xl">
-        <h1 className="text-2xl font-bold text-center mb-1">Photo Frame Uploader</h1>
-        <p className="text-slate-400 text-sm text-center mb-6">Choose and crop a photo for your frame</p>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <main className="app-shell">
+      <div className="app-panel">
+        <header className="app-header"><h1>Photo Frame</h1></header>
+        <nav aria-label="Photo management" className="app-nav">
+          <button type="button" onClick={() => setActiveTab('upload')} aria-current={activeTab === 'upload' ? 'page' : undefined}
+            className={activeTab === 'upload' ? 'active' : ''}>Upload</button>
+          <button type="button" onClick={() => setActiveTab('library')} aria-current={activeTab === 'library' ? 'page' : undefined}
+            className={activeTab === 'library' ? 'active' : ''}>Photo library</button>
+        </nav>
+        <div hidden={activeTab !== 'upload'}>
+        <div className="section-heading"><h2>Add a photo</h2><p>Choose an image and make it your own.</p></div>
+        <form onSubmit={handleSubmit} className="upload-form">
+          <label htmlFor="photo-file" className="field-label">Photo</label>
           <input type="file" name="file" accept=".jpg,.jpeg,.png,.bmp,.heic,.heif,image/jpeg,image/png,image/bmp,image/heic,image/heif" required disabled={uploading}
+            id="photo-file"
             onChange={(e) => selectFile(e.target.files?.[0] ?? null)}
-            className="w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer" />
+            className="file-input" />
 
           {previewUrl && !previewError && (
-            <div className="space-y-3">
-              <p className="text-sm text-slate-300">Drag the box to choose what appears on the frame. Use the arrow keys for finer adjustments.</p>
+            <div className="crop-section">
+              <p className="helper-text">Drag the box to choose what appears on the frame. Use the arrow keys for finer adjustments.</p>
               <div className="text-center">
               <div className="relative inline-block max-w-full overflow-hidden rounded-lg bg-slate-950 align-top">
                 {/* A native image is needed for local object URLs and canvas cropping. */}
@@ -158,20 +169,23 @@ export default function Home() {
                   style={{ left: `${cropX / imageSize.width * 100}%`, top: `${cropY / imageSize.height * 100}%`, width: `${cropWidth / imageSize.width * 100}%`, height: `${cropHeight / imageSize.height * 100}%` }} />}
               </div>
               </div>
-              {imageSize && <fieldset disabled={uploading} className="space-y-2 text-sm text-slate-300">
-                <label className="block">Zoom<input aria-label="Zoom" type="range" min="1" max="4" step="0.01" value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="block w-full accent-blue-500" /></label>
+              {imageSize && <fieldset disabled={uploading} className="zoom-control">
+                <label className="block">Zoom<input aria-label="Zoom" type="range" min="1" max="4" step="0.01" value={zoom} onChange={(e) => setZoom(Number(e.target.value))} /></label>
               </fieldset>}
             </div>
           )}
-          {previewError && <p className="text-sm text-amber-300">Your browser cannot preview this image. You can upload the original and the frame service will crop it automatically, or choose another image.</p>}
-          <input type="password" name="password" placeholder="Enter password to upload" required disabled={uploading}
-            className="w-full bg-slate-700 text-white placeholder-slate-400 text-sm px-4 py-2 rounded-lg border border-slate-600 focus:outline-none focus:border-blue-500" />
+          {previewError && <p className="helper-text">Your browser cannot preview this image. You can upload the original and the frame service will crop it automatically, or choose another image.</p>}
+          <label htmlFor="upload-password" className="field-label">Password</label>
+          <input id="upload-password" type="password" name="password" placeholder="Enter your password" required disabled={uploading}
+            className="text-input" />
           <button type="submit" disabled={uploading || (!!file && !imageSize && !previewError)}
-            className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed font-semibold py-2 px-4 rounded-lg transition-colors">
+            className="primary-button">
             {uploading ? 'Uploading...' : previewError ? 'Upload Original' : 'Upload Photo'}
           </button>
         </form>
-        {status && <div role="status" className="mt-4 p-3 bg-slate-700/50 rounded-lg text-sm text-center text-slate-200">{status}</div>}
+        {status && <div role="status" className="status-message">{status}</div>}
+        </div>
+        {activeTab === 'library' && <PhotoLibrary />}
       </div>
     </main>
   );

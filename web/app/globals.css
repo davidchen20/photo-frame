@@ -1,26 +1,47 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #f1f0eb; color: #252923; font-family: Arial, Helvetica, sans-serif; }
+button, input { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+button:focus-visible, input:focus-visible { outline: 2px solid #607b68; outline-offset: 3px; }
+.app-shell { min-height: 100vh; padding: 72px 24px; }
+.app-panel { width: min(100%, 680px); margin: 0 auto; }
+.app-header { padding-bottom: 30px; }
+.eyebrow { margin: 0 0 12px; color: #69786c; font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+.app-header h1 { margin: 0; font-family: Georgia, 'Times New Roman', serif; font-size: clamp(38px, 7vw, 52px); font-weight: 400; letter-spacing: -.035em; line-height: 1.05; }
+.header-description { margin: 12px 0 0; color: #73776e; font-size: 14px; line-height: 1.5; }
+.app-nav { display: flex; gap: 30px; border-bottom: 1px solid #d2d4cb; }
+.app-nav button { position: relative; border: 0; padding: 13px 0 15px; background: none; color: #767b72; font-size: 14px; }
+.app-nav button:hover, .app-nav button.active { color: #273c2e; }
+.app-nav button.active { font-weight: 700; }
+.app-nav button.active::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: #4f6c58; content: ''; }
+.section-heading { margin: 34px 0 24px; }
+.section-heading h2 { margin: 0; font-family: Georgia, 'Times New Roman', serif; font-size: 27px; font-weight: 400; letter-spacing: -.02em; }
+.section-heading p, .helper-text { margin: 8px 0 0; color: #70756c; font-size: 14px; line-height: 1.55; }
+.upload-form { display: flex; flex-direction: column; gap: 10px; }
+.field-label { margin-top: 10px; color: #434a42; font-size: 12px; font-weight: 700; }
+.file-input, .text-input { width: 100%; min-width: 0; border: 1px solid #d1d4ca; border-radius: 4px; background: #fafaf7; color: #2b322b; font-size: 14px; }
+.text-input { min-height: 44px; padding: 10px 12px; }
+.text-input::placeholder { color: #92978d; }
+.file-input { padding: 9px; color: #6c7269; }
+.file-input::file-selector-button { margin-right: 12px; border: 0; border-radius: 3px; padding: 8px 12px; background: #e5e9e1; color: #344b3a; font-weight: 700; cursor: pointer; }
+.primary-button { min-height: 44px; border: 1px solid #385543; border-radius: 4px; padding: 10px 20px; background: #385543; color: #fff; font-size: 14px; font-weight: 700; }
+.primary-button:hover:not(:disabled) { background: #2b4434; }
+.upload-form > .primary-button { margin-top: 10px; }
+.crop-section { margin: 12px 0; padding: 18px; border: 1px solid #dedfd8; background: #e8eae3; }
+.crop-section .helper-text { margin: 0 0 14px; }
+.zoom-control { margin-top: 14px; color: #485147; font-size: 12px; font-weight: 700; }
+.zoom-control input { display: block; width: 100%; margin-top: 8px; accent-color: #4f6c58; }
+.status-message { margin-top: 16px; border-left: 2px solid #738a77; padding: 10px 12px; background: #e7ebe3; color: #425248; font-size: 13px; line-height: 1.5; }
+.library-form { display: flex; gap: 8px; }
+.library-form .text-input { flex: 1; }
+.photo-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 26px 0 0; padding: 0; list-style: none; }
+.photo-card { min-width: 0; }
+.photo-card img, .photo-card > div { width: 100%; border-radius: 2px; }
+.photo-name { overflow: hidden; margin: 9px 0 5px; color: #696f66; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.delete-button { border: 0; padding: 3px 0; background: none; color: #945d52; font-size: 12px; }
+.delete-button:hover:not(:disabled) { text-decoration: underline; }
+@media (max-width: 480px) { .app-shell { padding: 42px 20px; } .library-form { flex-direction: column; } .photo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; } }

@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 // test
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
@@ -109,6 +110,58 @@ export async function getSignedUploadUrlAction(password: string, filename: strin
   }
 }
 
-// export async function deleteImage(filename: string) {
-//   // 
-// }
+function libraryClient(password: string) {
+  if (!process.env.UPLOAD_PASSWORD || password !== process.env.UPLOAD_PASSWORD) {
+    throw new Error('Incorrect password or missing server configuration.');
+  }
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('Photo library is not configured: SUPABASE_SERVICE_ROLE_KEY is required on the server.');
+  }
+  return createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+export async function listPhotosAction(password: string) {
+  try {
+    const supabase = libraryClient(password);
+    const photos: { id: string | number; storage_path: string; url: string | null }[] = [];
+    const pageSize = 100;
+    for (let start = 0; ; start += pageSize) {
+      const { data, error } = await supabase.from('images').select('id, storage_path')
+        .order('id').range(start, start + pageSize - 1);
+      if (error) throw error;
+      const rows = data ?? [];
+      const signed = await Promise.all(rows.map(async (row) => {
+        const { data: image } = await supabase.storage.from('photos').createSignedUrl(row.storage_path, 3600);
+        return { id: row.id, storage_path: row.storage_path, url: image?.signedUrl ?? null };
+      }));
+      photos.push(...signed);
+      if (rows.length < pageSize) break;
+    }
+    return { success: true, photos };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Could not load photos.' };
+  }
+}
+
+export async function deletePhotoAction(password: string, id: string | number) {
+  try {
+    const supabase = libraryClient(password);
+    const { data: photo, error: lookupError } = await supabase.from('images')
+      .select('storage_path').eq('id', id).single();
+    if (lookupError || !photo) throw new Error('Photo record not found. Refresh the library and try again.');
+    if (typeof photo.storage_path !== 'string' || !photo.storage_path.startsWith('processed/')) {
+      throw new Error('The photo has an invalid storage path.');
+    }
+    const { error: storageError } = await supabase.storage.from('photos').remove([photo.storage_path]);
+    if (storageError) throw new Error(`Could not delete the stored photo: ${storageError.message}`);
+    const { data: deleted, error: rowError } = await supabase.from('images').delete().eq('id', id).select('id');
+    if (rowError || !deleted?.length) {
+      throw new Error('The file was deleted, but its database record could not be removed. Try deleting it again.');
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Could not delete the photo.' };
+  }
+}

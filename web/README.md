@@ -16,6 +16,12 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Configuration
+
+Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `UPLOAD_PASSWORD` in `.env.local` for local use and in the Vercel environment for deployment. The photo library also requires `SUPABASE_SERVICE_ROLE_KEY`, set only as a server-side environment variable. Never prefix that key with `NEXT_PUBLIC_` or commit it to the repository. Restart the local server or redeploy after changing environment variables.
+
+The library uses the upload password to authorize listing and deleting photos. Deletion removes the processed object and its `images` row, but does not remove a copy already cached on the frame's SD card.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
