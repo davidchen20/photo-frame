@@ -205,7 +205,34 @@ bool StorageManager::syncWithCloud() {
     return false;
   }
 
+  // Commands remain pending on the server until a successful inventory report.
+  std::vector<String> completedDeletions;
+  JsonArray deletions = doc["deletions"].as<JsonArray>();
+  for (JsonObject command : deletions) {
+    String commandId = command["id"].as<String>();
+    String id = command["photo_id"].as<String>();
+    bool valid = !id.isEmpty() && !commandId.isEmpty();
+    for (size_t i = 0; i < id.length(); ++i) {
+      char c = id[i];
+      if (c == '/' || c == '\\' || (unsigned char)c < 32 || (unsigned char)c == 127) valid = false;
+    }
+    if (!valid) continue;
+    String path = "/" + id + ".bmp";
+    String upperPath = "/" + id + ".BMP";
+    bool removed = (!SD.exists(path.c_str()) || SD.remove(path.c_str())) &&
+                   (!SD.exists(upperPath.c_str()) || SD.remove(upperPath.c_str()));
+    if (!removed) {
+      Serial.printf("[SD] Could not delete %s\n", id.c_str());
+      continue;
+    }
+    for (auto it = localPhotos.begin(); it != localPhotos.end();) {
+      if (*it == id) it = localPhotos.erase(it); else ++it;
+    }
+    completedDeletions.push_back(commandId);
+  }
+
   // find and download one new image
+  bool downloadOk = true;
   for (JsonObject image : images) {
     String id = image["id"].as<String>();
     String url = image["url"].as<String>();
@@ -217,6 +244,12 @@ bool StorageManager::syncWithCloud() {
         continue;
     }
 
+    bool pendingDeletion = false;
+    for (JsonObject command : deletions) {
+      if (command["photo_id"].as<String>() == id) { pendingDeletion = true; break; }
+    }
+    if (pendingDeletion) continue;
+
     if (isCached(id)) {
         Serial.printf("[Cache] Already cached: %s\n", id.c_str());
         continue;
@@ -224,10 +257,28 @@ bool StorageManager::syncWithCloud() {
 
     Serial.printf("[Cache] NEW IMAGE: %s\n", id.c_str());
 
-    return downloadCloudImage(id, url);
+    downloadOk = downloadCloudImage(id, url);
+    break;
   }
 
-  return true;
+  JsonDocument report;
+  JsonArray photoIds = report["photo_ids"].to<JsonArray>();
+  for (const auto& id : localPhotos) photoIds.add(id);
+  JsonArray completed = report["completed_deletions"].to<JsonArray>();
+  for (const auto& id : completedDeletions) completed.add(id);
+  String body;
+  serializeJson(report, body);
+  if (!http->begin(*client, apiUrl)) return false;
+  http->addHeader("Authorization", String("Bearer ") + DEVICE_SECRET);
+  http->addHeader("Content-Type", "application/json");
+  http->setTimeout(10000);
+  int reportCode = http->POST(body);
+  http->end();
+  if (reportCode != HTTP_CODE_OK) {
+    Serial.printf("[Cloud] Inventory report failed: %d\n", reportCode);
+    return false;
+  }
+  return downloadOk;
 }
 
 bool StorageManager::downloadCloudImage(const String& id, const String& signedUrl) {

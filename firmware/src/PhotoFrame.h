@@ -16,6 +16,7 @@ private:
   bool shuffle;
   unsigned long lastChangeTime;
   size_t currentIndex;
+  bool emptyMessageShown;
 
 public:
   PhotoFrame(DisplayManager &disp, StorageManager &stor, unsigned long interval = 5000, bool isShuffle = true);

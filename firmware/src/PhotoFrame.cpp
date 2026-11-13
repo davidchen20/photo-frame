@@ -1,7 +1,7 @@
 #include "PhotoFrame.h"
 
 PhotoFrame::PhotoFrame(DisplayManager &disp, StorageManager &stor, unsigned long interval, bool isShuffle)
-  : display(disp), storage(stor), intervalMs(interval), shuffle(isShuffle), lastChangeTime(0), currentIndex(0) {}
+  : display(disp), storage(stor), intervalMs(interval), shuffle(isShuffle), lastChangeTime(0), currentIndex(0), emptyMessageShown(false) {}
 
 bool PhotoFrame::begin(const char* ssid, const char* password) {
   display.begin(1);
@@ -22,7 +22,14 @@ bool PhotoFrame::begin(const char* ssid, const char* password) {
 }
 
 void PhotoFrame::update() {
-  if (storage.getPhotoCount() == 0) return;
+  if (storage.getPhotoCount() == 0) {
+    if (!emptyMessageShown) {
+      display.showMessage("No photos on frame");
+      emptyMessageShown = true;
+    }
+    return;
+  }
+  emptyMessageShown = false;
 
   if (millis() - lastChangeTime >= intervalMs) {
     nextImage();
