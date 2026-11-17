@@ -33,6 +33,15 @@ button:focus-visible, input:focus-visible { outline: 2px solid #607b68; outline-
 .upload-form > .primary-button { margin-top: 10px; }
 .crop-section { margin: 12px 0; padding: 18px; border: 1px solid #dedfd8; background: #e8eae3; }
 .crop-section .helper-text { margin: 0 0 14px; }
+.upload-queue { margin: 8px 0; padding: 0; list-style: none; }
+.upload-queue li { border-bottom: 1px solid #dedfd8; }
+.upload-queue button { width: 100%; border: 0; padding: 10px; background: transparent; color: #434a42; text-align: left; overflow-wrap: anywhere; }
+.upload-queue button.selected-photo { background: #e5e9e1; font-weight: 700; }
+.photo-error { display: block; padding: 0 10px 8px; color: #945d52; font-size: 12px; }
+.crop-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0 0; border: 0; padding: 0; color: #485147; font-size: 12px; font-weight: 700; }
+.crop-controls legend { margin-bottom: 10px; }
+.crop-controls input { display: block; width: 100%; accent-color: #4f6c58; }
+.crop-controls button { justify-self: start; border: 0; padding: 4px 0; background: none; color: #385543; text-decoration: underline; }
 .zoom-control { margin-top: 14px; color: #485147; font-size: 12px; font-weight: 700; }
 .zoom-control input { display: block; width: 100%; margin-top: 8px; accent-color: #4f6c58; }
 .status-message { margin-top: 16px; border-left: 2px solid #738a77; padding: 10px 12px; background: #e7ebe3; color: #425248; font-size: 13px; line-height: 1.5; }

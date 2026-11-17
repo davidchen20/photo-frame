@@ -43,7 +43,7 @@ async function pingHeartbeat(timeoutMs = 5000): Promise<boolean> {
   }
 }
 
-export async function getSignedUploadUrlAction(password: string, filename: string, contentType: string) {
+export async function getSignedUploadUrlsAction(password: string, files: { filename: string; contentType: string }[]) {
   try {
     // Verify password server-side
     if (!process.env.UPLOAD_PASSWORD) {
@@ -54,40 +54,36 @@ export async function getSignedUploadUrlAction(password: string, filename: strin
       return { success: false, error: 'Incorrect password.' };
     }
 
-    // Validate and extract extension
+    if (!files.length || files.length > 100) {
+      return { success: false, error: 'Choose between 1 and 100 photos.' };
+    }
+
+    // Verify the service once for the batch, rather than once per image.
+    const microserviceAlive = await pingHeartbeat(90000);
+    if (!microserviceAlive) return { success: false, error: 'Image processor is unavailable. Please try again.' };
+
+    const supabase = await createClient();
+    const results = [];
+    for (const { filename, contentType } of files) {
     const ext = filename.slice(filename.lastIndexOf('.')).toLowerCase();
     const expectedMime = EXTENSION_TO_MIME[ext];
 
     if (!expectedMime) {
-      return {
-        success: false,
-        error: 'Unsupported file extension. Allowed: .jpg, .jpeg, .png, .bmp, .heic, .heif',
-      };
+      results.push({ error: 'Unsupported file extension.' });
+      continue;
     }
 
     const effectiveMime = contentType || expectedMime;
     if (!ALLOWED_MIME_TYPES.has(effectiveMime.toLowerCase())) {
-      return { success: false, error: `Unsupported file type: ${contentType}` };
-    }
-
-    // make sure render microservice is alive before uploading so that the photo is actually processed
-    const microserviceAlive = await pingHeartbeat(90000);
-
-    if (!microserviceAlive) {
-      return { 
-        success: false,
-        error: 'microservice not alive'
-      };
+      results.push({ error: `Unsupported file type: ${contentType}` });
+      continue;
     }
 
     // Sanitize file name
     const sanitizedBaseName = filename
       .replace(/\.[^/.]+$/, '')
       .replace(/[^a-zA-Z0-9-_]/g, '_');
-    const filePath = `uploads/${Date.now()}-${sanitizedBaseName}${ext}`;
-
-    // Initialize Supabase client
-    const supabase = await createClient();
+    const filePath = `uploads/${crypto.randomUUID()}-${sanitizedBaseName}${ext}`;
 
     // 3. Create signed upload URL
     const { data, error } = await supabase.storage
@@ -95,18 +91,18 @@ export async function getSignedUploadUrlAction(password: string, filename: strin
       .createSignedUploadUrl(filePath);
 
     if (error || !data) {
-      return { success: false, error: error?.message || 'Failed to generate upload URL.' };
+      results.push({ error: error?.message || 'Failed to generate upload URL.' });
+      continue;
     }
-
-    return {
-      success: true,
-      signedUrl: data.signedUrl,
+    results.push({
       token: data.token,
       path: data.path,
       contentType: effectiveMime,
-    };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'An unexpected error occurred.' };
+    });
+    }
+    return { success: true, results };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
   }
 }
 
