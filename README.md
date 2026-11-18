@@ -100,7 +100,6 @@ Still planned:
 
 - Physical enclosure
 - More robust sync and retry logic
-- Remote device configuration
-- Power and display performance improvements
-- Further image-processing optimizations
+- Album feature
+- More slideshow controls (pause, next, previous, ect.)
 - Cache eviction when the SD card fills up
