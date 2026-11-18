@@ -5,7 +5,7 @@
 StorageManager::StorageManager(const char* apiUrl, int sdCsPin)
   : apiUrl(apiUrl), sdCsPin(sdCsPin), storageMode(StorageMode::NONE), lastCloudSync(0) {}
 
-bool StorageManager::begin(const char* ssid, const char* password) {
+bool StorageManager::begin() {
     Serial.println("\n--- [StorageManager Initializing] ---");
 
     // 1. Initialize SD card
@@ -30,67 +30,19 @@ bool StorageManager::begin(const char* ssid, const char* password) {
     storageMode = StorageMode::SD_CARD;
 
     if (scanSdCard()) {
-        Serial.printf(
-            "[SD] Found %d cached photo(s).\n",
-            (int)localPhotos.size()
-        );
+      Serial.printf(
+          "[SD] Found %d cached photo(s).\n",
+          (int)localPhotos.size()
+      );
     } else {
         Serial.println("[SD] No cached photos found.");
     }
     
-    // 2. Try connecting to WiFi
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect(true);
-    delay(100);
-
-    Serial.printf(
-        "[Wi-Fi] Connecting to SSID: %s\n",
-        ssid
-    );
-
-    WiFi.begin(ssid, password);
-
-    unsigned long startAttempt = millis();
-
-    while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 12000) {
-        delay(500);
-        Serial.print(".");
-    }
-
-    Serial.println();
-
-
     if (WiFi.status() == WL_CONNECTED) {
-        Serial.printf(
-            "[Wi-Fi] Connected! IP: %s (Signal: %d dBm)\n",
-            WiFi.localIP().toString().c_str(),
-            WiFi.RSSI()
-        );
-        
-        Serial.print("MAC Address: ");
-        Serial.println(WiFi.macAddress());
-        Serial.printf("[WiFi] Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
-        Serial.printf("[WiFi] DNS: %s\n", WiFi.dnsIP().toString().c_str());
-
-        IPAddress ntpIP;
-        if (WiFi.hostByName("pool.ntp.org", ntpIP)) {
-            Serial.printf("[DNS] pool.ntp.org -> %s\n", ntpIP.toString().c_str());
-        } else {
-            Serial.println("[DNS] FAILED");
-        }
-
-        // immediately try to get a new photo
-        syncWithCloud();
-
+      Serial.println("[Wi-Fi] Connected; starting cloud sync.");
+      syncWithCloud();
     } else {
-        Serial.printf(
-            "[Wi-Fi] Failed to connect. Status Code: %d\n",
-            WiFi.status()
-        );
-
-        Serial.println(
-            "[Wi-Fi] Continuing in offline mode."
-        );
+      Serial.println("[Wi-Fi] Offline; using cached photos.");
     }
 
     return storageMode == StorageMode::SD_CARD;

@@ -21,7 +21,7 @@ private:
 public:
   PhotoFrame(DisplayManager &disp, StorageManager &stor, unsigned long interval = 5000, bool isShuffle = true);
 
-  bool begin(const char* ssid, const char* password);
+  bool begin();
   void update();
   void nextImage();
   

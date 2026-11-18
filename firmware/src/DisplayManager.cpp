@@ -57,6 +57,30 @@ CustomLGFX::CustomLGFX() {
       panelInstance.config(cfg);
     }
     panelInstance.setBus(&busInstance);
+
+    {
+      auto cfg = touchInstance.config();
+
+      cfg.x_min = 0;
+      cfg.x_max = 799;
+      cfg.y_min = 0;
+      cfg.y_max = 479;
+
+      cfg.pin_int = -1;
+      cfg.pin_rst = -1;
+      cfg.bus_shared = false;
+      cfg.offset_rotation = 0;
+
+      cfg.i2c_port = I2C_NUM_1;
+      cfg.pin_sda = GPIO_NUM_19;
+      cfg.pin_scl = GPIO_NUM_20;
+      cfg.freq = 400000;
+      cfg.i2c_addr = 0x14;
+
+      touchInstance.config(cfg);
+      panelInstance.setTouch(&touchInstance);
+      
+    }
     setPanel(&panelInstance);
 }
 
@@ -85,6 +109,18 @@ void DisplayManager::showMessage(const char* text, uint16_t color) {
   lcd.drawString(text, 20, 20);
 }
 
+void DisplayManager::showWifiSetup(const char* network, const char* password, const char* address) {
+  lcd.fillScreen(TFT_BLACK);
+  lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+  lcd.setTextSize(2);
+  lcd.drawString("On your phone, connect to:", 20, 20);
+  lcd.drawString(network, 20, 55);
+  lcd.drawString("Password:", 20, 100);
+  lcd.drawString(password, 20, 135);
+  lcd.drawString("Then open in a browser:", 20, 180);
+  lcd.drawString(address, 20, 215);
+}
+
 bool DisplayManager::renderCenteredBMP(fs::FS &fs, const char *filename) {
   if (!fs.exists(filename)) return false;
 
@@ -104,3 +140,71 @@ bool DisplayManager::renderCenteredBMP(fs::FS &fs, const char *filename) {
   clear();
   return lcd.drawBmp(fs, filename, x, y);
 }
+
+WifiChoice DisplayManager::showWifiMenu(bool hasSavedCredentials) {
+  lcd.fillScreen(TFT_BLACK);
+  lcd.setTextSize(2);
+  lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+  lcd.drawString("Choose Wi-Fi mode", 20, 20);
+
+  // Use the current screen width, since the display can be rotated.
+  const int buttonX = 20;
+  const int buttonWidth = lcd.width() - 40;
+  const int buttonHeight = 60;
+
+  const int savedY = 80;
+  const int newY = 160;
+  const int offlineY = 240;
+
+  const uint16_t enabledColor = TFT_DARKGREY;
+  const uint16_t disabledColor = TFT_BLACK;
+
+  lcd.fillRoundRect(
+      buttonX, savedY, buttonWidth, buttonHeight, 8,
+      hasSavedCredentials ? enabledColor : disabledColor
+  );
+  lcd.drawRoundRect(buttonX, savedY, buttonWidth, buttonHeight, 8, TFT_WHITE);
+  lcd.drawString(
+      hasSavedCredentials ? "Use saved Wi-Fi" : "No saved Wi-Fi",
+      buttonX + 12, savedY + 20
+  );
+
+  lcd.fillRoundRect(buttonX, newY, buttonWidth, buttonHeight, 8, enabledColor);
+  lcd.drawString("Set up new Wi-Fi", buttonX + 12, newY + 20);
+
+  lcd.fillRoundRect(buttonX, offlineY, buttonWidth, buttonHeight, 8, enabledColor);
+  lcd.drawString("Stay offline", buttonX + 12, offlineY + 20);
+
+  auto insideButton = [&](int x, int y, int top) {
+      return x >= buttonX &&
+              x < buttonX + buttonWidth &&
+              y >= top &&
+              y < top + buttonHeight;
+  };
+
+  while (true) {
+      uint16_t x;
+      uint16_t y;
+
+      if (lcd.getTouch(&x, &y)) {
+          // Useful while checking touch orientation.
+          Serial.printf("Touch: x=%u y=%u\n", x, y);
+
+          if (hasSavedCredentials && insideButton(x, y, savedY)) {
+              return WifiChoice::SavedNetwork;
+          }
+
+          if (insideButton(x, y, newY)) {
+              return WifiChoice::NewNetwork;
+          }
+
+          if (insideButton(x, y, offlineY)) {
+              return WifiChoice::Offline;
+          }
+      }
+
+      // Yield to other tasks instead of continuously polling.
+      vTaskDelay(pdMS_TO_TICKS(20));
+  }
+}
+

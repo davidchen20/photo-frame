@@ -1,24 +1,33 @@
 #include "PhotoFrame.h"
+#include "WifiSetup.h"
 
 PhotoFrame::PhotoFrame(DisplayManager &disp, StorageManager &stor, unsigned long interval, bool isShuffle)
   : display(disp), storage(stor), intervalMs(interval), shuffle(isShuffle), lastChangeTime(0), currentIndex(0), emptyMessageShown(false) {}
 
-bool PhotoFrame::begin(const char* ssid, const char* password) {
-  display.begin(1);
-  display.showMessage("Initializing Storage...");
+bool PhotoFrame::begin() {
+    display.begin(1);
 
-  if (!storage.begin(ssid, password)) {
-    display.showMessage("No Photos Found (Wi-Fi & SD Failed)", TFT_RED);
-    return false;
-  }
+    WifiSetup wifiSetup(display);
+    bool connected = wifiSetup.run();
 
-  storage.cleanCache();
+    Serial.println(
+        connected ? "Starting online." : "Starting offline."
+    );
 
-  display.showMessage("SD card ready", TFT_GREEN);
-  
-  delay(1000);
-  nextImage(); // Display first frame
-  return true;
+    display.showMessage("Initializing Storage...");
+
+    if (!storage.begin()) {
+        display.showMessage("SD card initialization failed", TFT_RED);
+        return false;
+    }
+
+    storage.cleanCache();
+
+    display.showMessage("SD card ready", TFT_GREEN);
+    delay(1000);
+
+    nextImage();
+    return true;
 }
 
 void PhotoFrame::update() {

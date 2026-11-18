@@ -16,8 +16,10 @@ PhotoFrame photoFrame(displayManager, storageManager, 5000 /* ms */, false /* sh
 
 void frameWorkerTask(void *pvParameters) {
   // Initialize frame inside the dedicated task frame context
-  if (!photoFrame.begin(WIFI_SSID, WIFI_PASS)) {
+  if (!photoFrame.begin()) {
     Serial.println("PhotoFrame initialization failed!");
+    vTaskDelete(nullptr);
+    return;
   }
 
   // storageManager.clearCache();

@@ -41,7 +41,7 @@ public:
 
   StorageMode getMode() const { return storageMode; }
 
-  bool begin(const char* ssid, const char* password);
+  bool begin();
   void update();
 
   // Cloud stuff
