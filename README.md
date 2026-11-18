@@ -4,10 +4,11 @@ A Wi-Fi photo frame built with an ESP32-S3 and an 800×480 TFT display. Photos a
 
 ## Features
 
-- 800×480 TFT display with a local photo slideshow
-- Web interface for uploading, cropping, and managing photos
+- 800×480 touchscreen display with a local photo slideshow
+- Web interface for uploading, cropping, and managing multiple photos
 - Automatic image processing for the display
 - Cloud synchronization over Wi-Fi and HTTPS
+- On-device Wi-Fi selection and phone-based network setup
 - MicroSD photo cache for offline viewing
 - Streamed downloads with temporary files to protect against incomplete transfers
 - FreeRTOS-based firmware and a containerized image-processing service
@@ -36,12 +37,25 @@ The frame handles synchronization, storage, and display. Image processing runs s
 
 ## How it works
 
-1. Upload and crop a photo in the web app.
+1. Upload one or more photos in the web app, and optionally crop each one.
 2. A Python service processes it for the display and stores it in Supabase.
 3. The frame checks for new photos and downloads them to its SD card over HTTPS.
 4. The frame displays photos from its local cache.
 
 Image processing happens off the ESP32 to save memory and CPU time. Downloads are streamed to a temporary file and renamed only after they finish, so an interrupted transfer doesn't leave a partial image in the cache. The frame scans its SD card on startup and downloads photos it doesn't already have.
+
+## Wi-Fi setup
+
+When the frame starts, use the touchscreen to connect to saved Wi-Fi, set up a new network, or stay offline. Offline mode displays photos already cached on the SD card.
+
+To set up a network:
+
+1. Tap **Set up new Wi-Fi** on the frame.
+2. On your phone, connect to `PhotoFrame-Setup` using the temporary password shown on the frame.
+3. Open `http://192.168.4.1` in your phone's browser, enter the network name and password, and select **Connect**.
+4. Check the frame for the connection result. After a successful connection, the frame saves the credentials for future use.
+
+The ESP32-S3 uses 2.4 GHz Wi-Fi. Networks that require a separate browser sign-in page or device registration may need additional setup; the frame's setup page doesn't handle those sign-ins. Saved credentials are stored in the ESP32's internal flash using `Preferences`, while photos are stored on the SD card.
 
 ## Engineering decisions
 
@@ -55,7 +69,7 @@ Image processing happens off the ESP32 to save memory and CPU time. Downloads ar
 
 ## Hardware and software
 
-- **Frame:** ESP32-S3, 800×480 TFT display, microSD card, and Wi-Fi
+- **Frame:** Elecrow CrowPanel 7-inch ESP32-S3, 800×480 touchscreen, microSD card, and Wi-Fi
 - **Firmware:** C++ with Arduino, FreeRTOS, PlatformIO, and LovyanGFX
 - **Web app:** Next.js, React, TypeScript, and Supabase
 - **Image processor:** Python service packaged with Docker
@@ -75,7 +89,7 @@ The components can be deployed independently. The web app is deployed on Vercel,
 
 ## Status
 
-This is a work in progress. The frame can connect to Wi-Fi, sync and cache photos, and display them from the SD card. The web app supports photo management and manual cropping, and the image-processing service is containerized.
+This is a work in progress. The frame supports touchscreen Wi-Fi setup, syncs and caches photos, and displays them from the SD card. The web app supports multiple uploads, photo management, and manual cropping, and the image-processing service is containerized.
 
 Still planned:
 
@@ -85,4 +99,3 @@ Still planned:
 - Power and display performance improvements
 - Further image-processing optimizations
 - Cache eviction when the SD card fills up
-- Multiple image uploads
