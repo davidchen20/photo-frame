@@ -1,4 +1,25 @@
 #include "DisplayManager.h"
+#include <limits.h>
+
+namespace {
+struct IntervalOption {
+  const char* label;
+  unsigned long milliseconds;
+};
+
+constexpr IntervalOption intervalOptions[] = {
+  {"5 seconds", 5000UL}, {"15 seconds", 15000UL},
+  {"30 seconds", 30000UL}, {"1 minute", 60000UL},
+  {"5 minutes", 300000UL}, {"15 minutes", 900000UL},
+  {"1 hour", 3600000UL}
+};
+constexpr int intervalOptionCount = sizeof(intervalOptions) / sizeof(intervalOptions[0]);
+constexpr int menuMargin = 20;
+constexpr int menuGap = 10;
+constexpr int menuTop = 80;
+constexpr int buttonHeight = 60;
+constexpr int rowSpacing = 70;
+}
 
 CustomLGFX::CustomLGFX() {
     {
@@ -119,6 +140,41 @@ void DisplayManager::showWifiSetup(const char* network, const char* password, co
   lcd.drawString(password, 20, 135);
   lcd.drawString("Then open in a browser:", 20, 180);
   lcd.drawString(address, 20, 215);
+}
+
+bool DisplayManager::getTouch(uint16_t& x, uint16_t& y) {
+  return lcd.getTouch(&x, &y);
+}
+
+void DisplayManager::showIntervalMenu(unsigned long intervalMs) {
+  lcd.fillScreen(TFT_BLACK);
+  lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+  lcd.setTextSize(2);
+  lcd.drawString("Slideshow interval", menuMargin, 20);
+  lcd.drawString("Choose a time:", menuMargin, 48);
+
+  const int buttonWidth = (lcd.width() - 2 * menuMargin - menuGap) / 2;
+  for (int i = 0; i < intervalOptionCount + 1; ++i) {
+    const int x = menuMargin + (i % 2) * (buttonWidth + menuGap);
+    const int y = menuTop + (i / 2) * rowSpacing;
+    const bool selected = i < intervalOptionCount && intervalOptions[i].milliseconds == intervalMs;
+    lcd.fillRoundRect(x, y, buttonWidth, buttonHeight, 8, selected ? TFT_DARKGREEN : TFT_DARKGREY);
+    lcd.drawRoundRect(x, y, buttonWidth, buttonHeight, 8, TFT_WHITE);
+    lcd.setTextColor(TFT_WHITE, selected ? TFT_DARKGREEN : TFT_DARKGREY);
+    lcd.drawString(i < intervalOptionCount ? intervalOptions[i].label : "Cancel", x + 10, y + 20);
+  }
+}
+
+unsigned long DisplayManager::intervalMenuChoice(uint16_t x, uint16_t y) const {
+  const int buttonWidth = (lcd.width() - 2 * menuMargin - menuGap) / 2;
+  for (int i = 0; i < intervalOptionCount + 1; ++i) {
+    const int left = menuMargin + (i % 2) * (buttonWidth + menuGap);
+    const int top = menuTop + (i / 2) * rowSpacing;
+    if (x >= left && x < left + buttonWidth && y >= top && y < top + buttonHeight) {
+      return i < intervalOptionCount ? intervalOptions[i].milliseconds : ULONG_MAX;
+    }
+  }
+  return 0;
 }
 
 bool DisplayManager::renderCenteredBMP(fs::FS &fs, const char *filename) {

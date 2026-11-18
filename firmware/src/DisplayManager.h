@@ -38,6 +38,10 @@ public:
     void clear(uint32_t color = TFT_BLACK);
     void showMessage(const char* text, uint16_t color = TFT_WHITE);
     void showWifiSetup(const char* network, const char* password, const char* address);
+    void showIntervalMenu(unsigned long intervalMs);
+    bool getTouch(uint16_t& x, uint16_t& y);
+    // Returns an interval in milliseconds, zero for no selection, or ULONG_MAX for cancel.
+    unsigned long intervalMenuChoice(uint16_t x, uint16_t y) const;
     
     bool renderCenteredBMP(fs::FS &fs, const char *filename);
     

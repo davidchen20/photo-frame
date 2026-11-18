@@ -5,6 +5,7 @@ A Wi-Fi photo frame built with an ESP32-S3 and an 800×480 TFT display. Photos a
 ## Features
 
 - 800×480 touchscreen display with a local photo slideshow
+- On-device slideshow interval settings, saved across restarts
 - Web interface for uploading, cropping, and managing multiple photos
 - Automatic image processing for the display
 - Cloud synchronization over Wi-Fi and HTTPS
@@ -56,6 +57,10 @@ To set up a network:
 4. Check the frame for the connection result. After a successful connection, the frame saves the credentials for future use.
 
 The ESP32-S3 uses 2.4 GHz Wi-Fi. Networks that require a separate browser sign-in page or device registration may need additional setup; the frame's setup page doesn't handle those sign-ins. Saved credentials are stored in the ESP32's internal flash using `Preferences`, while photos are stored on the SD card.
+
+## Slideshow settings
+
+Tap the screen during the slideshow to choose an interval from 5 seconds to 1 hour. The frame saves the choice in internal flash.
 
 ## Engineering decisions
 
